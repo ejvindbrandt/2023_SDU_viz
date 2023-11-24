@@ -15,7 +15,7 @@ title = "INTERACTIVE MAP OF V-DEM DEMOCRACY INDEX BY COUNTRY"
 title_style = {'text_align': 'center'}
 
 # You can replace this with a less.. heavy version of the csv.
-df = pd.read_csv("V-Dem-CY-FullOthers_csv_v13/V-Dem-CY-Full+Others-v13.csv")
+df = pd.read_csv("V-Dem-CY-Full+Others-v13.csv")
 
 df = df[df["year"].isin([2022, 2021, 2020, 2019, 2018, 2017, 2016])]
 df = df.sort_values(by='year', ascending=False)
@@ -29,11 +29,10 @@ app.layout = html.Div([
     html.H1(title, style=title_style),
     html.P("Select a category:"),
     html.Div(
-        dcc.RadioItems(
+        dcc.Dropdown(
         id='Democracy metric', 
         options=["Total Democracy Score", "Corruption Score", "Turnout"],
-        value="Total Democracy Score",
-        labelStyle={'display': 'block'}),
+        value="Total Democracy Score",),
         ),
     html.Div(dcc.Graph(id="graph"))
     
