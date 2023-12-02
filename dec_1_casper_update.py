@@ -21,6 +21,7 @@ from dash import Dash, dcc, html, Input, Output, no_update
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 
+
 # Put some stuff here to mak layout less busy.
 title = "INTERACTIVE MAP OF V-DEM DEMOCRACY INDEX BY COUNTRY"
 title_style = {"text_align": "left"}
@@ -63,7 +64,8 @@ app.layout = dbc.Container([
             dcc.Dropdown(
                 id="Democracy metric", 
                 options=["Democracy Score", "Corruption Score", "Turnout"],
-                value="Democracy Score"
+                value="Democracy Score",
+                clearable=False
             ),
             html.Br(),
             html.Br(),
@@ -72,14 +74,24 @@ app.layout = dbc.Container([
             dcc.Dropdown(
                 id="regions", 
                 options=["World", "Europe", "Asia", "Africa", "North America", "South America"],
-                value="World"
+                value="World",
+                clearable=False
             ),
             
             html.Br(),
             html.Br(),
             
             html.Div(id="test"),
+            
+            html.Br(),
+            html.Br(),
+            
+            dcc.Slider(0, 1, value=1, id="value_slider")
+            
             ], width=2),
+            
+           
+
         # Choropleth Map
         dbc.Col(html.Div(dcc.Graph(id="choropleth")), width=10),
         
@@ -106,20 +118,26 @@ app.layout = dbc.Container([
         ]),
     
     # Compare Graph
-    dbc.Row(
-        dcc.Graph(id="compare_graph"),
-    ),
-    
-    # Slider based on year for comparison
     dbc.Row([
-        html.P("Year Range Slider"),
-        dcc.RangeSlider(id="slider", min=0, max=23, step=1, value=[0, 23]),
+        dbc.Col([
+            html.P("Year Range Slider"),
+            dcc.RangeSlider(
+                id="slider", 
+                min=0, 
+                max=23, 
+                step=1, 
+                value=[0, 23], 
+                vertical=True
+            )
+            ], width=2), 
+        dbc.Col(
+            dcc.Graph(id="compare_graph"), width=10
+        ),
+        
     ]),
     
-    # A scatter plot using data from the df and in-built iso data. Colored based on difference in democracy score right now.
-    dcc.Graph(id='test_scatter'),
-    
 ])
+
 
 
 @app.callback(
@@ -129,7 +147,7 @@ app.layout = dbc.Container([
     Input("choropleth", "clickData"),
     )
 
-def update_comparison(selected_metric, selected_country):
+def update_select_country(selected_metric, selected_country):
     if selected_metric == "Turnout":
         selected_column = "v2eltrnout"
         legend_title = "Turnout"
@@ -154,102 +172,29 @@ def update_comparison(selected_metric, selected_country):
         )
         
     else:
-        country_iso = "DNK"
+        country_iso = "TUR"
         fig_selected_country = px.bar(
-            df[df["country_text_id"] == country_iso],
+            df[df["country_text_id"] == country_iso].groupby("year")[selected_column].mean().reset_index(),
             x="year",  
             y=selected_column, 
-            title=f"{legend_title}: Denmark",
+            title=f"{legend_title}: {df.loc[df['country_text_id'] == country_iso, 'country_name'].iloc[0]}",
         )    
         fig_selected_country.update_layout(
             xaxis_title="Years 2000-2023", 
             yaxis_title=legend_title
         )    
-        
+    
+
+    fig_selected_country.update_yaxes(range=[df[selected_column].min(), df[selected_column].max()])        
         
     # This is just calculating the difference between first recorded year and last.
     drop_nan = df.loc[df[selected_column].notna()]
     last_val = drop_nan.loc[(df["country_text_id"] == country_iso), ["year", selected_column]].sort_values("year", ascending=False).iloc[0][selected_column]
     init_val = drop_nan.loc[(df["country_text_id"] == country_iso), ["year", selected_column]].sort_values("year").iloc[0][selected_column]
-    print(last_val)
-    print(init_val)
     difference = round((last_val - init_val), 3)
 
+    
     return fig_selected_country, difference
-
-@app.callback(
-    Output("choropleth", "figure"),
-    Input("Democracy metric", "value"),
-    Input("regions", "value"),
-    )
-
-def display_choropleth(selected_metric, selected_region):
-    if selected_metric == "Turnout":
-        selected_column = "v2eltrnout"
-        legend_title = "Turnout"
-    elif selected_metric == "Corruption Score":
-        selected_column = "v2exbribe"
-        legend_title = "Lack of Corruption"
-    elif selected_metric == "Democracy Score":
-        selected_column = "v2x_polyarchy"
-        legend_title = "Democracy Score"
-
-    # Main choropleth graph
-    choro_fig = px.choropleth(df, 
-                        labels={selected_column: legend_title},
-                        locations="country_text_id", # the country ISO codes, such as "DNK" for Denmark.
-                        locationmode="ISO-3",
-                        color=selected_column, # The column that will determine color.
-                        hover_name="country_name",
-                        hover_data={"v2exnamhos": True, "v2exnamhog": True, "year":True},
-                        color_continuous_scale=px.colors.sequential.Plasma[::-1], # Reverse plasma coloring.
-                        scope=selected_region.lower(), # Determines region selected.
-    )
-
-    
-    choro_fig.update_traces(
-        hovertemplate="<b>%{hovertext}</b><br>" +
-                        legend_title + ": %{z}<br>"+
-                        "Head of State: %{customdata[0]}<br>" +
-                        "Head of Government: %{customdata[1]}<br>"+
-                        "Year: %{customdata[2]}<br>" 
-    )
-    
-    # Apparently a lot of different settings available via this update_geos thing.
-    # We should look into that a bit more. https://plotly.com/python/reference/layout/geo/
-    choro_fig.update_geos(
-        # Projection type. There are a bunch, look at the link.
-        projection_type="natural earth",
-        
-        # Color statements.
-        coastlinecolor="Black",
-        landcolor="white",
-        countrycolor="white",
-        oceancolor="LightBlue",
-        
-        # Various show-this-or-that statements.
-        showcoastlines=True,
-        showland=True,
-        showcountries=True,
-        showocean=True,
-        showlakes=False,
-        showframe=True,
-    )
-    
-    choro_fig.update_layout(
-        dragmode=False, # Prevents the user from "grabbing" and rotating the world. 
-                        # Felt this feature was laggy and unnecessary.
-        coloraxis_colorbar=dict( # Settings for the choropleth color bar.
-            len=0.7,
-            thickness=20,
-            title=""
-        ),
-        margin=dict(l=0, r=0, t=0, b=0), # Sets the inside margins of the choropleth box.
-        height=600, # This only accepts pixel values. Maybe possible to adapt to user screen size with javascript.
-    )
-    
-    return choro_fig
-
 
 
 @app.callback(
@@ -259,35 +204,33 @@ def display_choropleth(selected_metric, selected_region):
     Input("slider", "value"),
 )
 
-def update_comparison_slider(selected_metric, compare, slider):
+def update_comparison(selected_metric, compare, slider):
     
-    if selected_metric == "Turnout":
-        selected_column = "v2eltrnout"
-        legend_title = "Turnout"
+    if selected_metric == "Democracy Score":
+        selected_column = "v2x_polyarchy"
+        legend_title = "Democracy Score"
     elif selected_metric == "Corruption Score":
         selected_column = "v2exbribe"
         legend_title = "Lack of Corruption"
-    elif selected_metric == "Democracy Score":
-        selected_column = "v2x_polyarchy"
-        legend_title = "Democracy Score"
+    else:
+        selected_column = "v2eltrnout"
+        legend_title = "Turnout"
+    
+    
+    
     
     
     # Comparison tool
     
-    # This is just 
-    if slider[0] <10:
-        slider[0] = int("200" + str(slider[0]))
-    else:
-        slider[0] = int("20" + str(slider[0]))
-    if slider[1] <10:
-        slider[1] = int("200" + str(slider[1]))
-    else:
-        slider[1] = int("20" + str(slider[1]))    
+    # problem: 2000+ is too big for UI. Therefore, use 0-23 for UI and do this.
+    slider[0] = slider[0] + 2000
+    slider[1] = slider[1] + 2000
     
     
     slider_df = df[df["country_name"].isin(compare)]
     slider_df = slider_df[slider_df["year"].between(slider[0], slider[1])]
     
+    slider_df = slider_df.groupby(["country_name", "year"])[selected_column].mean().reset_index()
     
     fig_comparison = px.bar(
         slider_df,
@@ -308,6 +251,116 @@ def update_comparison_slider(selected_metric, compare, slider):
     return fig_comparison
 
 
+@app.callback(
+    Output("value_slider", "min"),
+    Output("value_slider", "max"),
+    Input("Democracy metric", "value"),
+)
+
+def update_value_slider(metric):
+    if metric == "Democracy Score":
+        return 0, 1
+    elif metric == "Corruption Score":
+        return -4, 4
+    else:
+        return 0, 100
+        
+@app.callback(
+    Output("choropleth", "figure"),
+    Input("Democracy metric", "value"),
+    Input("regions", "value"),
+    Input("value_slider", "value")
+)
+
+def update_choropleth(selected_metric, selected_region, arbitrary_limit):
+    if selected_metric == "Turnout":
+        selected_column = "v2eltrnout"
+        legend_title = "Turnout"
+    elif selected_metric == "Corruption Score":
+        selected_column = "v2exbribe"
+        legend_title = "Lack of Corruption"
+    elif selected_metric == "Democracy Score":
+        selected_column = "v2x_polyarchy"
+        legend_title = "Democracy Score"
+
+    # Main choropleth graph
+    choro_fig = px.choropleth(
+        df,
+        labels={selected_column: legend_title},
+        locations="country_text_id",
+        locationmode="ISO-3",
+        color=selected_column,
+        hover_name="country_name",
+        hover_data={"v2exnamhos": True, "v2exnamhog": True, "year": True},
+        color_continuous_scale=px.colors.sequential.Plasma[::-1],
+        scope=selected_region.lower(),
+    )
+    
+
+    choro_fig.update_traces(
+        hovertemplate="<b>%{hovertext}</b><br>"
+    )
+
+    choro_fig.update_geos(
+        projection_type="natural earth",
+        coastlinecolor="Black",
+        landcolor="white",
+        countrycolor="white",
+        oceancolor="LightBlue",
+        showcoastlines=True,
+        showland=True,
+        showcountries=True,
+        showocean=True,
+        showlakes=False,
+        showframe=True,
+    )
+
+    choro_fig.update_layout(
+        dragmode=False,
+        coloraxis_colorbar=dict(len=0.7, thickness=20, title=""),
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=600,
+    )
+
+    # This user thingy doesn't work properly. 
+    df["user_limit"] = df[selected_column].ge(arbitrary_limit)
+    scatter_icons = go.Figure(
+        go.Scattergeo(
+            locations=df["country_text_id"],
+            locationmode="ISO-3",
+            text=df["country_name"],
+            marker=dict(
+                color=df["user_limit"].map({True: "white", False: "black"}),
+                size=5,
+                symbol=df["user_limit"].map({True: "circle", False: "square"}),
+                opacity=1,
+            ),
+            mode="markers",
+        )
+    )
+    
+    scatter_icons.update_traces(
+        hovertemplate="<b>%{text}</b><br>"
+    )
+
+
+    scatter_icons.update_geos(
+        projection_type="natural earth", 
+        visible=False
+    )
+
+    scatter_icons.update_layout(
+        dragmode=False,
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=600,
+    )
+
+    # Combine choropleth and scatter plot
+    
+    choro_fig.add_traces(scatter_icons.data)
+
+    return choro_fig
+
 # This callback is just for testing the hover. 
 # I was thinking of implementing a highlight, but that seemed a little hard.
 @app.callback(
@@ -316,54 +369,19 @@ def update_comparison_slider(selected_metric, compare, slider):
 )
 
 def do_something(hovering):
-    
-    if hovering:
-        iso = hovering['points'][0]["hovertext"]
+    if not hovering:
+        return no_update
+    elif hovering and "points" in hovering and hovering["points"]:
+        if "hovertext" in hovering["points"][0]:
+            iso = hovering["points"][0]["hovertext"]
+            return iso
+        elif "text" in hovering["points"][0]:
+            iso = hovering["points"][0]["text"]
+            return iso
+    else:
+        iso = hovering["points"][0]["hovertext"]
 
         return iso
-    else:
-        return no_update
-    
-        
-@app.callback(
-    Output("test_scatter", "figure"),
-    Input("Democracy metric", "value")
-)
 
-def scatter_do(hover_data):
-    df['increased'] = df['v2x_polyarchy'].diff() > 0
-    scatter_icons = go.Figure(go.Scattergeo(
-        locations=df['country_text_id'],
-        text=df['country_name'],
-        marker=dict(
-            color=df['increased'].map({True: "green", False: "red"}),
-            size=5,
-            symbol='circle',
-            opacity=0.7,
-        ),
-        mode='markers'
-    ))
-    
-    scatter_icons.update_geos(
-        # Projection type. There are a bunch, look at the link.
-        projection_type="natural earth",
-        visible=False
-    )
-    
-    
-    scatter_icons.update_layout(
-        dragmode=False, # Prevents the user from "grabbing" and rotating the world. 
-                        # Felt this feature was laggy and unnecessary.
-        coloraxis_colorbar=dict( # Settings for the choropleth color bar.
-            len=0.7,
-            thickness=20,
-            title=""
-        ),
-        margin=dict(l=0, r=0, t=0, b=0), # Sets the inside margins of the choropleth box.
-        height=600, # This only accepts pixel values. Maybe possible to adapt to user screen size with javascript.
-    )
-    
-    
-    return scatter_icons
     
 app.run_server(debug=False) # Can also set to true, but doesn"t work for me for some reason.
