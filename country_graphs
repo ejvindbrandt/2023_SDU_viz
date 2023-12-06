@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Dec  4 18:38:38 2023
+
+@author: ejvindbrandt
+"""
+import pandas as pd
+import plotly.express as px
+from dash import Dash, dcc, html, Input, Output, no_update
+import dash_bootstrap_components as dbc
+import plotly.graph_objects as go
+
+
+# Load your V-Dem data
+# Replace 'your_data.csv' with the actual file path or URL of your V-Dem data
+df = pd.read_csv('V-Dem-CY-Full+Others-v13.csv')
+df = df[df["year"].isin(range(2000, 2023 + 1))] # Desired year range.
+df = df.sort_values(by="year", ascending=False)
+
+#%%
+# Define available variables
+available_variables = ['v2x_polyarchy', 'v2x_suffr', 'v2xel_frefair', 'v2x_freexp_altinf', 'v2x_frassoc_thick', 'v2x_elecoff']
+variables_names = ['Democracy', 'Suffrage', 'free and fair', 'free', 'frassoq', 'election']
+
+
+
+app = Dash(__name__)
+app.layout = dbc.Container(
+    [
+        dcc.Dropdown(
+            id="select_year",
+            options=[{"label": x, "value": x} for x in df["year"].unique()],
+            value=2022,
+            clearable=False,
+        ),
+ 
+        dcc.Graph(id="min_max_graph"),
+        
+        html.Br(),
+        html.Br(),
+        
+        dcc.Dropdown(
+            id="select_country",
+            options=[{"label": x, "value": x} for x in df["country_name"].unique()],
+            value= 'Denmark',
+            clearable=False,
+        ),
+ 
+        dcc.Graph(id="country_data"),
+        
+        dcc.Checklist(
+            id="select_variables",
+            options=[{"label": x, "value": y} for x, y in zip(variables_names, available_variables)],
+            value=['v2x_polyarchy'],
+            inline = True,
+        ),
+        
+
+    ]
+)
+
+@app.callback(
+    Output('min_max_graph', 'figure'),
+    Input("select_year", "value"),
+)
+def update_min_max_graph(year):
+    selected_df = df.loc[df["year"] == year].sort_values(by='v2x_polyarchy', ascending=True)
+    min_max_df = pd.concat([selected_df.head(5), selected_df.tail(5)], ignore_index=True, axis=0)
+    
+    fig_combined = px.bar(
+        min_max_df,
+        x='v2x_polyarchy',
+        y='country_name',
+        title=f"Most and least democratic states in {year}",
+        color='v2x_polyarchy',
+        color_continuous_scale='Blues'
+    )
+    
+    fig_combined.update_layout(
+        xaxis_title="Democracy score",
+        yaxis_title="State",
+        coloraxis_showscale=False,
+        template='plotly_white'
+    )
+    
+    fig_combined.update_traces(
+        hovertemplate="Democracy score: %{x}"
+    )
+
+    return fig_combined
+
+
+@app.callback(
+    Output('country_data', 'figure'),
+    Input("select_country", "value"),
+    Input("select_variables", "value"),
+    )
+
+def update_country_data_graph(country, variables):
+    select_df = df.loc[df["country_name"] == country]
+    
+    fig_country_data = px.line(
+        select_df,
+        x='year',
+        y=variables,
+        title=f"Data for {country}",
+        
+        )
+    
+    fig_country_data.update_layout(
+        legend_title="Showing score for",
+        xaxis_title = 'Year',
+        yaxis_title = 'Score',
+        template='plotly_white')
+    
+    
+    
+    return fig_country_data
+    
+    
+    
+
+
+
+app.run_server(debug=True)
